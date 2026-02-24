@@ -24,7 +24,7 @@ services:
   redis:
     image: redis:7-alpine
     container_name: cs_redis
-    command: redis-server --requirepass ${REDIS_PASSWORD:-}
+    command: redis-server --requirepass ${REDIS_PASSWORD:-} --maxmemory 512mb --maxmemory-policy allkeys-lru
     volumes:
       - redis_data:/data
     ports:
@@ -41,6 +41,7 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
+      target: runtime
     container_name: cs_backend
     env_file:
       - .env
@@ -50,8 +51,8 @@ services:
       - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-cs_user}:${POSTGRES_PASSWORD:-cs_password}@postgres:5432/${POSTGRES_DB:-customer_service}
       - REDIS_URL=redis://redis:6379/0
     volumes:
-      - ./data:/app/data
-      - ./logs:/app/logs
+      - ./data:/app/data         # ChromaDB 持久化
+      - ./logs:/app/logs         # 日志持久化
     ports:
       - "8000:8000"
     depends_on:
@@ -59,19 +60,32 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      start_period: 40s
+      retries: 3
     restart: unless-stopped
-    command: uvicorn main:app --host 0.0.0.0 --port 8000
+    # 使用 Dockerfile 中的 CMD，不再覆盖
 
   # ── 前端 ─────────────────────────────────────────────────
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      target: runtime
     container_name: cs_frontend
     ports:
       - "80:80"
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost/health.html"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
     restart: unless-stopped
 
 volumes:
