@@ -82,16 +82,18 @@ llm_example/
 │   │   └── knowledge.py
 │   ├── services/               # 业务服务层
 │   │   ├── chat_service.py     # 对话编排服务
-│   │   ├── knowledge_service.py # 知识库管理
-│   │   └── auth_service.py     # 用户认证
+│   │   ├── auth_service.py     # 用户认证
+│   │   └── quality_service.py  # 质量评估
 │   ├── db/                     # 数据库连接
 │   │   └── database.py
 │   └── utils/                  # 工具类
-│       ├── logger.py
-│       └── cache.py
+│       ├── logger.py           # 结构化日志+审计
+│       └── performance.py      # 多级缓存+性能优化
 ├── frontend/                   # Vue3 前端
 │   ├── index.html
 │   ├── vite.config.js
+│   ├── nginx.conf              # Nginx 生产配置
+│   ├── Dockerfile              # 多阶段构建
 │   ├── package.json
 │   └── src/
 │       ├── App.vue
@@ -104,17 +106,23 @@ llm_example/
 │       └── api/
 │           └── index.js        # API 请求封装
 ├── tests/
+│   ├── conftest.py             # pytest 公共 fixtures
 │   ├── unit/                   # 单元测试
+│   │   ├── test_intent_classifier.py
+│   │   ├── test_conversation_memory.py
+│   │   └── test_chat_service.py
 │   └── integration/            # 集成测试
+│       └── test_api.py
 ├── docs/
-│   ├── architecture.md
-│   └── api.md
+│   ├── architecture.md         # 系统架构文档
+│   └── api.md                  # 完整 API 接口文档
 ├── scripts/
 │   ├── init_db.py              # 数据库初始化
-│   └── load_knowledge.py       # 知识库导入
+│   └── load_knowledge.py       # 知识库批量导入
 ├── data/
-│   ├── knowledge_base/         # 知识库文档
+│   ├── knowledge/              # 知识库文档（放入待导入文件）
 │   └── chroma_db/              # 向量数据库持久化
+├── logs/                       # 运行日志（自动创建）
 ├── docker-compose.yml
 ├── .env.example
 └── requirements.txt
@@ -122,69 +130,144 @@ llm_example/
 
 ## 🚀 快速开始
 
-### 1. 环境准备
+### 方式一：Docker Compose 一键部署（推荐）
+
 ```bash
+# 1. 克隆项目
+git clone git@github.com:DJsummer/Intelligent-Customer-Service.git
+cd Intelligent-Customer-Service
+
+# 2. 配置环境变量
 cp .env.example .env
-# 编辑 .env 填入 OpenAI API Key 等配置
+vi .env   # 填入 OPENAI_API_KEY 等必填项
+
+# 3. 启动所有服务
+docker-compose up -d
+
+# 4. 查看服务状态
+docker-compose ps
+
+# 5. 访问系统
+open http://localhost         # 前端界面
+open http://localhost:8000/docs  # API 文档
 ```
 
-### 2. 启动基础服务
-```bash
-docker-compose up -d postgres redis
-```
+### 方式二：本地开发模式
 
-### 3. 初始化数据库
 ```bash
+# 环境要求：Python 3.11+、Node.js 20+、PostgreSQL 15+、Redis 7+
+
+# 1. 安装 Python 依赖
 pip install -r requirements.txt
-python scripts/init_db.py
-```
 
-### 4. 导入知识库
-```bash
-python scripts/load_knowledge.py --dir data/knowledge_base
-```
+# 2. 配置环境变量
+cp .env.example .env
+# 编辑 .env 设置数据库连接信息
 
-### 5. 启动后端
-```bash
+# 3. 初始化数据库（创建表 + 默认管理员账号）
+cd backend && python ../scripts/init_db.py
+
+# 4. 导入知识库文档
+mkdir -p data/knowledge
+# 将 PDF/DOCX/TXT/MD 文档放入 data/knowledge/
+python scripts/load_knowledge.py --dir data/knowledge
+
+# 5. 启动后端
 cd backend
-uvicorn main:app --reload --port 8000
-```
+uvicorn main:app --reload --host 0.0.0.0 --port 8000
 
-### 6. 启动前端
-```bash
+# 6. 启动前端（新终端）
 cd frontend
 npm install && npm run dev
+# 访问 http://localhost:5173
 ```
 
-### 7. 一键 Docker 启动
-```bash
-docker-compose up -d
-```
+### 默认账号
 
-## 📡 API 接口
-
-| 方法 | 路径 | 描述 |
+| 账号 | 密码 | 角色 |
 |------|------|------|
-| POST | `/api/auth/login` | 用户登录 |
-| POST | `/api/auth/register` | 用户注册 |
-| POST | `/api/chat/message` | 发送消息 |
-| GET  | `/api/chat/history/{session_id}` | 获取对话历史 |
-| WS   | `/ws/chat/{session_id}` | WebSocket 流式对话 |
-| POST | `/api/knowledge/upload` | 上传知识文档 |
-| GET  | `/api/knowledge/list` | 知识库列表 |
-| GET  | `/api/admin/stats` | 系统统计 |
+| admin | Admin@123456 | 管理员 |
+
+> ⚠️ 首次登录后请立即修改密码
+
+---
+
+## 📡 API 接口摘要
+
+| 方法 | 路径 | 描述 | 认证 |
+|------|------|------|------|
+| POST | `/auth/register` | 用户注册 | ❌ |
+| POST | `/auth/login` | 用户登录 | ❌ |
+| GET  | `/auth/me` | 当前用户信息 | ✅ |
+| POST | `/chat/message` | 发送消息（REST） | 可选 |
+| GET  | `/chat/history/{session_id}` | 对话历史 | ✅ |
+| POST | `/chat/end/{session_id}` | 结束会话 | ✅ |
+| POST | `/chat/feedback` | 消息评分 | ✅ |
+| WS   | `/ws/chat/{session_id}` | WebSocket 流式对话 | ✅ |
+| POST | `/knowledge/upload` | 上传知识文档 | agent+ |
+| GET  | `/knowledge/list` | 文档列表 | agent+ |
+| DELETE | `/knowledge/{id}` | 删除文档 | admin |
+| POST | `/knowledge/search` | 语义搜索 | ✅ |
+| GET  | `/admin/stats` | 系统统计 | admin |
+| GET  | `/admin/conversations` | 对话列表 | admin |
+| GET  | `/admin/users` | 用户列表 | admin |
+| GET  | `/health` | 健康检查 | ❌ |
+
+📖 完整接口文档见 [docs/api.md](docs/api.md) 或访问 `http://localhost:8000/docs`
+
+---
+
+## ⚙️ 主要环境变量
+
+| 变量 | 必填 | 默认值 | 说明 |
+|------|------|--------|------|
+| `OPENAI_API_KEY` | ✅ | - | OpenAI API 密钥 |
+| `LLM_PROVIDER` | ❌ | `openai` | `openai` / `ollama` / `azure` |
+| `DATABASE_URL` | ✅ | - | PostgreSQL 连接串 |
+| `REDIS_URL` | ❌ | `redis://localhost:6379/0` | Redis 连接串 |
+| `SECRET_KEY` | ✅ | - | JWT 签名密钥（生产必须修改） |
+| `OLLAMA_BASE_URL` | ❌ | `http://localhost:11434` | Ollama 地址（本地模型） |
+
+---
 
 ## 🔑 核心特性
 
-- ✅ **多轮对话** - 基于滑动窗口的上下文管理
-- ✅ **RAG 检索** - 知识库语义检索增强回答
-- ✅ **意图识别** - 自动分类用户意图（咨询/投诉/售后等）
-- ✅ **流式输出** - WebSocket 实时 Token 流式传输
-- ✅ **多模型支持** - OpenAI / Ollama 本地模型切换
-- ✅ **JWT 认证** - 安全的用户身份验证
-- ✅ **缓存加速** - Redis 对话缓存 + 向量检索缓存
-- ✅ **质量监控** - 对话满意度评估与指标追踪
+- ✅ **多轮对话** — Redis 滑动窗口上下文管理，支持 N 轮记忆
+- ✅ **RAG 检索增强** — ChromaDB 向量检索 + 多级缓存（L1 内存 + L2 Redis）
+- ✅ **意图识别** — 规则优先 + LLM 兜底，自动识别 6 类用户意图
+- ✅ **流式输出** — WebSocket 实时 Token 流式传输，毫秒级首字节响应
+- ✅ **多模型支持** — OpenAI / Ollama（本地部署）/ Azure OpenAI 无缝切换
+- ✅ **JWT 认证** — Access Token（1h）+ Refresh Token（7d），登录锁定保护
+- ✅ **性能优化** — Embedding 批量缓存（TTL 24h）、热点知识预热、DB 连接池
+- ✅ **结构化日志** — request_id 传播、LLM 调用追踪、JSON Lines 审计日志
+- ✅ **质量监控** — P95 延迟、RAG 命中率、意图分布、用户满意度指标
+- ✅ **容器化部署** — 多阶段 Dockerfile、Nginx 反向代理、Docker Compose 编排
+
+---
+
+## 🧪 运行测试
+
+```bash
+cd backend
+# 安装测试依赖
+pip install pytest pytest-asyncio httpx
+
+# 运行全部测试
+pytest ../tests/ -v
+
+# 仅运行单元测试
+pytest ../tests/unit/ -v
+
+# 仅运行集成测试
+pytest ../tests/integration/ -v
+
+# 生成覆盖率报告
+pytest ../tests/ --cov=. --cov-report=html
+```
+
+---
 
 ## 📄 License
 
 MIT
+
