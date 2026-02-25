@@ -5,7 +5,7 @@ WORKDIR /app
 
 # 复制 package 文件并安装依赖
 COPY package*.json ./
-RUN npm ci --silent
+RUN npm install --silent
 
 # 复制源代码并构建
 COPY . .
@@ -28,6 +28,6 @@ COPY nginx.conf /etc/nginx/conf.d/default.conf
 EXPOSE 80
 
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
-    CMD wget -qO- http://localhost/health.html || exit 1
+    CMD wget -qO- http://127.0.0.1/health.html || exit 1
 
 CMD ["nginx", "-g", "daemon off;"]

@@ -23,6 +23,9 @@ LOG_FORMAT = (
     "{message}"
 )
 
+# 给所有 logger 设置 request_id 默认值，避免 KeyError
+logger = logger.bind(request_id="system")
+
 
 def setup_logging(log_level: str = "INFO", log_file: Optional[str] = "logs/app.log"):
     """初始化结构化日志配置（兼容原 setup_logger 接口）"""

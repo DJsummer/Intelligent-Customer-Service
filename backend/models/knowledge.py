@@ -8,7 +8,7 @@
 import uuid
 from datetime import datetime
 from enum import Enum as PyEnum
-from sqlalchemy import String, Text, Integer, Float, DateTime, Enum, JSON, Boolean, BigInteger
+from sqlalchemy import String, Text, Integer, Float, DateTime, Enum, JSON, Boolean, BigInteger, ForeignKey
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
@@ -94,7 +94,7 @@ class KnowledgeChunk(Base):
     )
     document_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
-        # ForeignKey 使用字符串延迟引用
+        ForeignKey("knowledge_documents.id", ondelete="CASCADE"),
         nullable=False, index=True
     )
     # 在 ChromaDB 中对应的向量 ID

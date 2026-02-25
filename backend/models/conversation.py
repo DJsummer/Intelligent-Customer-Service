@@ -61,7 +61,7 @@ class Conversation(Base):
         Enum(IntentType), default=IntentType.UNKNOWN
     )
     # 对话元数据（来源渠道、设备等）
-    metadata: Mapped[dict] = mapped_column(JSON, default=dict)
+    extra_info: Mapped[dict] = mapped_column("metadata", JSON, default=dict)
     # 消息轮数
     turn_count: Mapped[int] = mapped_column(Integer, default=0)
     # 总 token 消耗
