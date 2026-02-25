@@ -283,6 +283,136 @@ npm install && npm run dev
 
 ---
 
+## 🎓 模型训练与微调
+
+> 对于大多数客服场景，推荐先通过**充实知识库 + 调优 Prompt** 提升效果，再考虑微调。
+
+### 方案对比
+
+| 方案 | 成本 | 效果提升 | 难度 |
+|------|------|----------|------|
+| 上传知识库文档（RAG） | 免费 | ⭐⭐⭐ | 低 |
+| 调优系统 Prompt | 免费 | ⭐⭐ | 低 |
+| LoRA 微调 | 需要 GPU | ⭐⭐⭐⭐ | 中 |
+| 全量微调 / 预训练 | 需要多卡 | ⭐⭐⭐⭐⭐ | 高 |
+
+---
+
+### 方案一：充实知识库（无需训练，推荐优先尝试）
+
+将业务文档放入知识库，模型会自动检索后回答：
+
+```bash
+# 支持格式：PDF、DOCX、TXT、MD
+mkdir -p data/knowledge
+cp your-docs/*.pdf data/knowledge/
+
+# 批量导入
+python scripts/load_knowledge.py --dir data/knowledge
+
+# 或通过前端界面上传（管理员账号登录后操作）
+```
+
+---
+
+### 方案二：调优系统 Prompt
+
+修改 [backend/core/llm/prompt_manager.py](backend/core/llm/prompt_manager.py) 中的系统提示词，让模型更贴合你的业务场景：
+
+```python
+SYSTEM_PROMPT = """你是XX公司的智能客服助手，专注于处理售后、退款、物流等问题。
+回答风格：简洁、礼貌、专业。
+当无法回答时，引导用户联系人工客服：400-xxx-xxxx。"""
+```
+
+---
+
+### 方案三：LoRA 微调 qwen2.5:7b
+
+使用自己的对话数据对模型进行微调，效果最好。
+
+#### 硬件要求
+| 方法 | 显存需求 | 说明 |
+|------|----------|------|
+| QLoRA（4-bit 量化） | 10~16 GB | RTX 3080/4070/3090 可用 |
+| LoRA（bf16） | 24 GB+ | RTX 4090 / A100 |
+| CPU 训练 | 无 GPU 要求 | 极慢，不推荐 |
+
+#### 1. 准备训练数据
+
+创建 `data/finetune/train.json`，格式如下：
+
+```json
+[
+  {
+    "instruction": "你是一名专业客服，请回答用户问题",
+    "input": "我的订单还没到，怎么查物流？",
+    "output": "您好！您可以通过以下方式查询物流：\n1. 登录官网「我的订单」页面点击「查看物流」\n2. 在快递公司官网输入运单号查询\n如有疑问请提供订单号，我为您进一步查询。"
+  },
+  {
+    "instruction": "你是一名专业客服，请回答用户问题",
+    "input": "如何申请退款？",
+    "output": "退款申请步骤：\n1. 登录账号进入「我的订单」\n2. 找到对应订单点击「申请退款」\n3. 选择退款原因并提交\n收到申请后1-3个工作日内审核，退款将原路返回。"
+  }
+]
+```
+
+数据量建议：**300条以上**效果明显，1000条以上效果稳定。
+
+#### 2. 使用 LLaMA-Factory 微调
+
+```bash
+# 安装 LLaMA-Factory
+git clone https://github.com/hiyouga/LLaMA-Factory.git
+cd LLaMA-Factory
+pip install -e ".[torch,metrics]"
+
+# 启动 Web UI（推荐，可视化配置训练参数）
+llamafactory-cli webui
+
+# 或直接命令行训练（QLoRA，适合消费级 GPU）
+llamafactory-cli train \
+  --model_name_or_path Qwen/Qwen2.5-7B-Instruct \
+  --method lora \
+  --quantization_bit 4 \
+  --dataset your_dataset \
+  --template qwen \
+  --output_dir ./output/qwen2.5-7b-customer-service \
+  --num_train_epochs 3 \
+  --per_device_train_batch_size 2 \
+  --gradient_accumulation_steps 4 \
+  --learning_rate 1e-4 \
+  --fp16
+```
+
+#### 3. 导出并加载到 Ollama
+
+```bash
+# 合并 LoRA 权重并导出为 GGUF 格式
+llamafactory-cli export \
+  --model_name_or_path Qwen/Qwen2.5-7B-Instruct \
+  --adapter_name_or_path ./output/qwen2.5-7b-customer-service \
+  --template qwen \
+  --export_dir ./output/merged \
+  --export_quantization_bit 4
+
+# 转换为 GGUF（需要 llama.cpp）
+git clone https://github.com/ggerganov/llama.cpp && cd llama.cpp
+python convert_hf_to_gguf.py ../output/merged --outfile qwen2.5-cs.gguf --outtype q4_k_m
+
+# 创建 Ollama 模型
+cat > Modelfile << EOF
+FROM ./qwen2.5-cs.gguf
+SYSTEM "你是专业的客服助手，负责解答售后、退款、物流等问题。"
+EOF
+ollama create qwen2.5-customer-service -f Modelfile
+
+# 修改 .env 使用微调后的模型
+# OLLAMA_MODEL=qwen2.5-customer-service
+```
+
+---
+
 ## 🧪 运行测试
 
 ```bash
