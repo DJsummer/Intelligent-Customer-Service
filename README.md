@@ -130,7 +130,43 @@ llm_example/
 
 ## 🚀 快速开始
 
-### 方式一：Docker Compose 一键部署（推荐）
+### 方式一：Ollama + Docker Compose（免费推荐）
+
+使用本地 Ollama 模型，完全免费，无需 OpenAI API Key。
+
+```bash
+# 1. 安装 Ollama
+curl -fsSL https://ollama.com/install.sh | sh
+
+# 2. 拉取模型（聊天模型 ~4.7GB + 嵌入模型 ~274MB）
+ollama pull qwen2.5:7b
+ollama pull nomic-embed-text
+
+# 3. 配置 Ollama 监听所有接口（让 Docker 容器可访问）
+sudo mkdir -p /etc/systemd/system/ollama.service.d
+echo -e '[Service]\nEnvironment="OLLAMA_HOST=0.0.0.0"' | sudo tee /etc/systemd/system/ollama.service.d/override.conf
+sudo systemctl daemon-reload && sudo systemctl restart ollama
+
+# 4. 克隆项目
+git clone git@github.com:DJsummer/Intelligent-Customer-Service.git
+cd Intelligent-Customer-Service
+
+# 5. 配置环境变量（.env.example 默认已是 Ollama 配置）
+cp .env.example .env
+# 只需修改数据库密码等必填项，LLM 相关无需修改
+
+# 6. 启动所有服务
+docker compose up -d
+
+# 7. 查看服务状态
+docker compose ps
+
+# 8. 访问系统
+# 前端界面:    http://localhost
+# API 文档:   http://localhost:8000/docs
+```
+
+### 方式二：OpenAI API + Docker Compose
 
 ```bash
 # 1. 克隆项目
@@ -139,20 +175,20 @@ cd Intelligent-Customer-Service
 
 # 2. 配置环境变量
 cp .env.example .env
-vi .env   # 填入 OPENAI_API_KEY 等必填项
+vi .env   # 修改以下关键项：
+          # LLM_PROVIDER=openai
+          # OPENAI_API_KEY=sk-your-key
+          # POSTGRES_PASSWORD=your-password
 
 # 3. 启动所有服务
-docker-compose up -d
+docker compose up -d
 
-# 4. 查看服务状态
-docker-compose ps
-
-# 5. 访问系统
-open http://localhost         # 前端界面
-open http://localhost:8000/docs  # API 文档
+# 4. 访问系统
+# 前端界面:    http://localhost
+# API 文档:   http://localhost:8000/docs
 ```
 
-### 方式二：本地开发模式
+### 方式三：本地开发模式（不使用 Docker）
 
 ```bash
 # 环境要求：Python 3.11+、Node.js 20+、PostgreSQL 15+、Redis 7+
@@ -221,12 +257,14 @@ npm install && npm run dev
 
 | 变量 | 必填 | 默认值 | 说明 |
 |------|------|--------|------|
-| `OPENAI_API_KEY` | ✅ | - | OpenAI API 密钥 |
-| `LLM_PROVIDER` | ❌ | `openai` | `openai` / `ollama` / `azure` |
+| `LLM_PROVIDER` | ❌ | `ollama` | `openai` / `ollama` / `azure_openai` |
+| `OLLAMA_BASE_URL` | Ollama必填 | `http://host.docker.internal:11434` | Docker内访问宿主机Ollama |
+| `OLLAMA_MODEL` | ❌ | `qwen2.5:7b` | Ollama 聊天模型名 |
+| `OPENAI_API_KEY` | OpenAI必填 | - | OpenAI API 密钥 |
+| `POSTGRES_PASSWORD` | ✅ | - | PostgreSQL 密码 |
 | `DATABASE_URL` | ✅ | - | PostgreSQL 连接串 |
-| `REDIS_URL` | ❌ | `redis://localhost:6379/0` | Redis 连接串 |
+| `REDIS_URL` | ❌ | `redis://redis:6379/0` | Redis 连接串 |
 | `SECRET_KEY` | ✅ | - | JWT 签名密钥（生产必须修改） |
-| `OLLAMA_BASE_URL` | ❌ | `http://localhost:11434` | Ollama 地址（本地模型） |
 
 ---
 
