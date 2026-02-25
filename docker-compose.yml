@@ -43,6 +43,8 @@ services:
       dockerfile: Dockerfile
       target: runtime
     container_name: cs_backend
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     env_file:
       - .env
     environment:
